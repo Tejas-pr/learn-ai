@@ -48,6 +48,8 @@ chroma_db/
 *.sqlite3
 .cache/
 data/
+# Uploads / Documents & PDFs
+*.pdf
 uploads/
 temp/
 tmp/
