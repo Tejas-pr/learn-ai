@@ -1,0 +1,3 @@
+[submodule "chat_with_pdf"]
+	path = chat_with_pdf
+	url = https://github.com/Tejas-pr/chat_with_pdf.git
