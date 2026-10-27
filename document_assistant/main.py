@@ -5,6 +5,10 @@ import chromadb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from pathlib import Path
+from fastapi import UploadFile, File
+from pypdf import PdfReader
+
 app = FastAPI(title="Document Assistant")
 
 # Local Ollama model server
@@ -144,6 +148,77 @@ def ingest(request: IngestRequest):
         raise HTTPException(
             status_code=502,
             detail=f"Ingestion failed: {e}",
+        )
+
+
+
+@app.post("/upload")
+async def upload_document(file: UploadFile = File(...)):
+    filename = file.filename or ""
+    extension = Path(filename).suffix.lower()
+
+    if extension not in {".txt", ".pdf"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Only .txt and .pdf files are supported",
+        )
+
+    try:
+        if extension == ".txt":
+            content = await file.read()
+            text = content.decode("utf-8-sig")
+
+        else:
+            reader = PdfReader(file.file)
+            text = "\n".join(
+                page.extract_text() or ""
+                for page in reader.pages
+            )
+
+        if not text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="No extractable text found in the file",
+            )
+
+        document_id = Path(filename).stem
+
+        chunks = chunk_text(text)
+        embeddings = embed_texts(chunks)
+
+        collection.delete(
+            where={"document_id": document_id}
+        )
+
+        collection.upsert(
+            ids=[
+                f"{document_id}_{i}"
+                for i in range(len(chunks))
+            ],
+            documents=chunks,
+            embeddings=embeddings,
+            metadatas=[
+                {
+                    "document_id": document_id,
+                    "chunk_index": i,
+                }
+                for i in range(len(chunks))
+            ],
+        )
+
+        return {
+            "filename": filename,
+            "document_id": document_id,
+            "chunks_created": len(chunks),
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Document processing failed: {str(e)}",
         )
 
 
